@@ -3,6 +3,8 @@
 const JWT = require('jsonwebtoken');
 const Config = require('getconfig');
 const Fixtures = require('../fixtures');
+const Faker = require('faker');
+
 const Server = Fixtures.server;
 const db = Fixtures.db;
 
@@ -52,7 +54,7 @@ describe('POST /item_owners', () => {
         const payload = { username: user.username, item_id: newEvent[0].id };
         return server.inject({ method: 'post', url: '/item_owners', payload, headers: { 'Authorization': token } }).then((res) => {
 
-            expect(res.statusCode).to.equal(200);
+            expect(res.statusCode).to.equal(201);
         });
     });
     it('Create owner as user', () => {
@@ -75,7 +77,7 @@ describe('POST /item_owners', () => {
     });
     it('Create owner fake item', () => {
 
-        const notExist = newEvent[0].id + 100;
+        const notExist = Faker.random.uuid();
 
         const token = JWT.sign({ id: admin.id, timestamp: new Date() }, Config.auth.secret, Config.auth.options);
         const payload = { username: user.username, item_id: notExist };

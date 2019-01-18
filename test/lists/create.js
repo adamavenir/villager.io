@@ -3,6 +3,7 @@
 const Fixtures = require('../fixtures');
 const JWT = require('jsonwebtoken');
 const Config = require('getconfig');
+
 const Server = Fixtures.server;
 const db = Fixtures.db;
 
@@ -11,84 +12,68 @@ const { expect } = require('code');
 
 describe('POST Lists:', () => {
 
-    const list = Fixtures.list();
-
     let server;
-
     const user = Fixtures.user_id();
     let token;
-    let listID;
+    let query;
 
     before(async () => {
 
         server = await Server;
 
-        await Promise.all([
-            db.users.insert(user)
-        ]);
+        await db.users.insert(user);
+        token = JWT.sign(
+            { id: user.id, username: user.username, timestamp: new Date() },
+            Config.auth.secret,
+            Config.auth.options
+        );
+
+        query = {
+            method: 'POST',
+            url: '/lists',
+            headers: { 'authorization': token }
+        };
     });
 
     after(async () => {
 
         await Promise.all([
-            db.users.destroy({ id: user.id }),
-            db.lists.destroy({ id: listID })
+            db.users.destroy(),
+            db.lists.destroy()
         ]);
     });
 
-    it('Create list', () => {
+    it('Create list', async () => {
 
-        token = JWT.sign({ id: user.id, timestamp: new Date() }, Config.auth.secret, Config.auth.options);
-        const query = {
-            method: 'POST',
-            url:    `/lists`,
-            headers: { 'authorization': token },
-            payload: list
-        };
-        return (
-            server.inject(query)
-                .then((response) => {
+        const list = Fixtures.list();
+        query.payload = list;
+        const response = await server.inject(query);
+        expect(response.statusCode).to.equal(201);
+    });
 
-                    listID = response.result.data.id;
-                    expect(response.statusCode).to.equal(200);
-                })
+    it('Create list duplicate', async () => {
+
+        const list = Fixtures.list();
+        const dup = Object.assign({}, list);
+        list.owner = user.username;
+        await db.lists.insert(list);
+        query.payload = dup;
+        const response = await server.inject(query);
+        expect(response.statusCode).to.equal(409);
+        expect(response.result.message).to.equal(
+            'List of that name and owner already exists.'
         );
     });
 
-    it('Create list duplicate', () => {
+    it('Create list no name', async () => {
 
-        const query = {
-            method: 'POST',
-            url:    `/lists`,
-            headers: { 'authorization': token },
-            payload: list
-        };
-
-        return (
-            server.inject(query)
-                .then((response) => {
-
-                    expect(response.statusCode).to.equal(409);
-                })
-        );
-    });
-
-    it('Create list no name', () => {
-
+        const list = Fixtures.list();
         list.name = null;
-        const query = {
-            method: 'POST',
-            url:    `/lists`,
-            headers: { 'authorization': token },
-            payload: list
-        };
-
-        return (
-            server.inject(query)
-                .then((response) => {
-
-                    expect(response.statusCode).to.equal(400);
-                })
+        query.payload = list;
+        const response = await server.inject(query);
+        expect(response.statusCode).to.equal(400);
+        expect(response.result.message).to.match(
+            /"name" must be a string/
         );
     });
 });

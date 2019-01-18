@@ -1,24 +1,18 @@
 'use strict';
 
-//const JWT = require('jsonwebtoken');
-//const Config = require('getconfig');
-const Joi = require('joi');
 const Boom = require('boom');
-const Schema = require('../../lib/schema');
-const swagger = Schema.generate(['404', '409']);
+const Schema = require('../../lib/responseSchema');
+const RequestSchema = require('../../lib/requestSchema');
+const Bcrypt = require('bcrypt');
+
+const swagger = Schema.generate(['401', '404', '409']);
 
 module.exports = {
     description: 'update user',
     tags: ['api', 'users'],
     validate: {
-        payload: {
-            name: Joi.string().optional().example('totally not a robot'),
-            username: Joi.string().optional().example('seriously'),
-            email: Joi.string().optional().example('real@email'),
-            bio: Joi.string().optional().example('seriously i am not a robot'),
-            password: Joi.string().optional().example('password')
-        },
-        headers: Joi.object({ 'authorization': Joi.string().required() }).unknown()
+        payload: RequestSchema.userUpdatePayload,
+        headers: RequestSchema.tokenRequired
     },
     handler: async function (request, reply) {
 
@@ -28,25 +22,38 @@ module.exports = {
         if (!user) {
             throw Boom.notFound('User not found');
         }
+
         if (user.id !== credentials.id) {
             throw Boom.unauthorized('User is not permitted to edit this account');
         }
-        user = request.payload;
-        if (user.username) {
-            const takenUsername = await this.db.users.findOne({ username: user.username }, ['username']);
-            if (takenUsername) {
-                throw Boom.conflict(`Username ${ takenUsername.username } already exists`);
+
+        const updatedUser = request.payload;
+        if (updatedUser.username) {
+            const usernameExists = await this.db.users.byusername({ username: updatedUser.username });
+            if (usernameExists) {
+                throw Boom.conflict(`Username ${ updatedUser.username } already exists`);
             }
         }
-        if (user.email) {
-            const takenEmail = await this.db.users.findOne({ email: user.email }, ['email']);
-            if (takenEmail) {
-                throw Boom.conflict(`Email ${ takenEmail.email } already exists`);
+
+        if (updatedUser.email) {
+            const emailExists = await this.db.users.byEmail({ email: updatedUser.email });
+            if (emailExists) {
+                throw Boom.conflict(`Email ${ updatedUser.email } already exists`);
             }
         }
+
+        if (updatedUser.password) {
+            const match = await Bcrypt.compare(updatedUser.oldPassword, user.password);
+            if (!match) {
+                throw Boom.unauthorized('Old password invalid');
+            }
+
+            updatedUser.password = await Bcrypt.hash(user.password, 10);
+        }
+
         //might have to logout user if they change password
-        await this.db.users.updateOne({ id: credentials.id }, user);
-        user = await this.db.users.findOne({ id: credentials.id });
+        user = await this.db.users.updateOne({ id: credentials.id }, updatedUser);
+        delete user.password;
         return reply({ data: { user } });
     },
     response: {

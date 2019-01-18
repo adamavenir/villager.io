@@ -1,15 +1,15 @@
 'use strict';
 
-const Joi = require('joi');
-const Schema = require('../../lib/schema');
-// const Config = require('getconfig');
-const swagger = Schema.generate(['401']);
+const Schema = require('../../lib/responseSchema');
+const RequestSchema = require('../../lib/requestSchema');
+
+const swagger = Schema.generate([]);
 
 module.exports = {
     description: 'Log out',
     tags: ['api', 'auth'],
     validate: {
-        headers: Joi.object({ 'authorization': Joi.string().required() }).unknown()
+        headers: RequestSchema.tokenRequired
     },
     handler: async function (request, reply) {
 
@@ -22,7 +22,7 @@ module.exports = {
     },
     response: {
         status: {
-            204: Joi.only(null).label('Null')
+            204: Schema.null_response
         }
     },
     plugins: {

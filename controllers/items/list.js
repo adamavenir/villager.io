@@ -1,18 +1,25 @@
 'use strict';
-// const Joi = require('joi');
+
 const { forEach } = require('p-iteration');
-//const Boom = require('boom');
-// const server = require('../../server');
-const Schema = require('../../lib/schema');
-const swagger = Schema.generate(['404']);
+const Schema = require('../../lib/responseSchema');
+const RequestSchema = require('../../lib/requestSchema');
+
+const swagger = Schema.generate([]);
 
 module.exports = {
     description: 'Returns all items',
     tags: ['api', 'items', 'public'],
     auth: false,
+    validate: {
+        query: RequestSchema.itemsQuery
+    },
     handler: async function (request, reply) {
 
-        const founditems = await this.db.items.getall();
+        const query = {
+            item_type: request.query.type,
+            item_name: request.query.name
+        };
+        const founditems = await this.db.items.getall(query);
 
         await forEach(founditems, async (item) => {
 
@@ -22,11 +29,11 @@ module.exports = {
         /* Add pagination */
         return reply({ data: founditems });
     },
-    /*response: {
+    response: {
         status: {
             200: Schema.items_response
         }
-    },*/
+    },
     plugins: {
         'hapi-swagger': swagger
     }

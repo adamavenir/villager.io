@@ -4,6 +4,7 @@ const Fixtures = require('../fixtures');
 const JWT = require('jsonwebtoken');
 const Config = require('getconfig');
 const Faker = require('faker');
+
 const Server = Fixtures.server;
 const db = Fixtures.db;
 
@@ -12,11 +13,10 @@ const { expect } = require('code');
 
 describe('PUT Items:', () => {
 
-    const event = Fixtures.event();
-    const event2 = Fixtures.event();
-    const place = Fixtures.place();
-    const group = Fixtures.group();
-
+    let place;
+    let group;
+    let event;
+    let activity;
     let server;
 
     const user = Fixtures.user_id();
@@ -24,25 +24,22 @@ describe('PUT Items:', () => {
 
     const tag = Fixtures.tag();
 
-    let token;
-    let newEvent;
+    let userToken;
+    let modToken;
 
     before(async () => {
 
+        place = await db.items.insert(Fixtures.place());
+        group = await db.items.insert(Fixtures.group());
+        event = await db.items.insert(Fixtures.event());
+        activity = await db.items.insert(Fixtures.activity());
         await Promise.all([
             db.users.insert(user),
             db.users.insert(mod)
         ]);
 
-        newEvent = await Promise.all([
-            db.items.insert(event),
-            db.items.insert(event2),
-            db.items.insert(place),
-            db.items.insert(group)
-        ]);
-
         await Promise.all([
-            db.item_owners.insert({ username: user.username, item_id: newEvent[0].id })
+            db.item_owners.insert({ username: user.username, item_id: event.id })
         ]);
 
         await Promise.all([
@@ -50,393 +47,308 @@ describe('PUT Items:', () => {
         ]);
 
         server = await Server;
+        userToken = JWT.sign({ id: user.id, timestamp: new Date() }, Config.auth.secret, Config.auth.options);
+        modToken = JWT.sign({ id: mod.id, timestamp: new Date() }, Config.auth.secret, Config.auth.options);
     });
 
     after(async () => {
 
         await Promise.all([
-            db.users.destroy({ id: user.id }),
-            db.users.destroy({ id: mod.id }),
-            db.items.destroy({ id: newEvent[0].id }),
-            db.items.destroy({ id: newEvent[1].id }),
-            db.items.destroy({ id: newEvent[2].id }),
-            db.items.destroy({ id: newEvent[3].id }),
-            db.tags.destroy({ name: tag.name })
+            db.users.destroy(),
+            db.items.destroy(),
+            db.item_owners.destroy(),
+            db.tags.destroy()
         ]);
     });
 
-    it('Update item', () => {
-
-        token = JWT.sign({ id: user.id, timestamp: new Date() }, Config.auth.secret, Config.auth.options);
+    it('Update item', async () => {
 
         const query = {
             method: 'PUT',
-            url: `/items/${newEvent[0].id}`,
-            headers: { 'Authorization': token },
-            payload: { 'name': 'THIS IS A TEST', 'linked_items': [newEvent[2].id] }
+            url: `/items/${event.id}`,
+            headers: { 'Authorization': userToken },
+            payload: { 'name': 'THIS IS A TEST' }
         };
+        const response = await server.inject(query);
+        expect(response.result.data.name).to.equal('THIS IS A TEST');
+        expect(response.statusCode).to.equal(200);
+    });
 
-        return (
-            server.inject(query)
-                .then((response) => {
+    it('Update item: mod', async () => {
 
-                    expect(response.result.data.name).to.equal('THIS IS A TEST');
-                    expect(response.statusCode).to.equal(200);
-                })
+        const query = {
+            method: 'PUT',
+            url: `/items/${place.id}`,
+            headers: { 'Authorization': modToken },
+            payload: { location: 'Somewhere' }
+        };
+        const response = await server.inject(query);
+        expect(response.result.data.location).to.equal('Somewhere');
+        expect(response.statusCode).to.equal(200);
+    });
+
+    it('Update item: non-owner', async () => {
+
+        const query = {
+            method: 'PUT',
+            url: `/items/${place.id}`,
+            headers: { 'Authorization': userToken },
+            payload: { name: 'Test' }
+        };
+        const response = await server.inject(query);
+        expect(response.statusCode).to.equal(401);
+        expect(response.result.message).to.equal('Not permitted to edit item');
+    });
+
+    it('Update item: Item does not exist', async () => {
+
+        const query = {
+            method: 'PUT',
+            url: `/items/${Faker.random.uuid()}`,
+            headers: { 'Authorization': userToken },
+            payload: { name: 'Super test' }
+        };
+        const response = await server.inject(query);
+        expect(response.statusCode).to.equal(404);
+    });
+
+    it('Update item: Individual item elements', async () => {
+
+        const startDate = Faker.date.past();
+        const endDate = Faker.date.future();
+        const query = {
+            method: 'PUT',
+            url: `/items/${event.id}`,
+            headers: { 'Authorization': userToken },
+            payload: {
+                'name': 'TOO TEST TOO FURIOUS',
+                'start_date': startDate,
+                'end_date': endDate,
+                'location': 'here'
+            }
+        };
+        const response = await server.inject(query);
+        expect(response.statusCode).to.equal(200);
+        expect(response.result.data.location).to.equal('here');
+        expect(response.result.data.start_date).to.equal(startDate);
+        expect(response.result.data.end_date).to.equal(endDate);
+        expect(response.result.data.name).to.equal('TOO TEST TOO FURIOUS');
+    });
+
+    it('Update item: name already exists', async () => {
+
+        const query = {
+            method: 'PUT',
+            url: `/items/${event.id}`,
+            headers: { 'Authorization': userToken },
+            payload: { name: place.name }
+        };
+        const response = await server.inject(query);
+        expect(response.statusCode).to.equal(409);
+        expect(response.result.message).to.equal(
+            'Item already exists with name.'
         );
     });
 
-    it('Update item: mod', () => {
-
-        token = JWT.sign({ id: mod.id, timestamp: new Date() }, Config.auth.secret, Config.auth.options);
-
-        place.name = 'THIS IS A TEST TOO';
+    it('Update item: Non-Event with dates', async () => {
 
         const query = {
             method: 'PUT',
-            url: `/items/${newEvent[2].id}`,
-            headers: { 'Authorization': token },
-            payload: place
-        };
-
-        return (
-            server.inject(query)
-                .then((response) => {
-
-                    expect(response.statusCode).to.equal(200);
-                    expect(response.result.data.name).to.equal(place.name);
-                })
-        );
-    });
-
-    it('Update item: non-owner', () => {
-
-        token = JWT.sign({ id: user.id, timestamp: new Date() }, Config.auth.secret, Config.auth.options);
-
-        event.name = 'THIS IS A TEST';
-
-        const query = {
-            method: 'PUT',
-            url: `/items/${newEvent[1].id}`,
-            headers: { 'Authorization': token },
-            payload: event
-        };
-
-        return (
-            server.inject(query)
-                .then((response) => {
-
-                    expect(response.statusCode).to.equal(401);
-                })
-        );
-    });
-
-    it('Update item: Item does not exist', () => {
-
-        token = JWT.sign({ id: mod.id, timestamp: new Date() }, Config.auth.secret, Config.auth.options);
-
-        const notItem = newEvent[0].id + 100;
-
-        event.name = 'TOO TEST TOO FURIOUS';
-
-        const query = {
-            method: 'PUT',
-            url: `/items/${notItem}`,
-            headers: { 'Authorization': token },
-            payload: event
-        };
-
-        return (
-            server.inject(query)
-                .then((response) => {
-
-                    expect(response.statusCode).to.equal(404);
-                })
-        );
-    });
-
-    it('Update item: Individual item elements', () => {
-
-        token = JWT.sign({ id: user.id, timestamp: new Date() }, Config.auth.secret, Config.auth.options);
-
-        const query = {
-            method: 'PUT',
-            url: `/items/${newEvent[0].id}`,
-            headers: { 'Authorization': token },
-            payload: { 'name': 'TOO TEST TOO FURIOUS', 'start_date': '2014-02-01', 'end_date': '2014-02-02', 'location': 'here' }
-        };
-
-        return (
-            server.inject(query)
-                .then((response) => {
-
-                    expect(response.statusCode).to.equal(200);
-                    expect(response.result.data.location).to.equal('here');
-                    expect(response.result.data.name).to.equal('TOO TEST TOO FURIOUS');
-                })
-        );
-    });
-
-    it('Update item: Non-Event with dates', () => {
-
-        token = JWT.sign({ id: user.id, timestamp: new Date() }, Config.auth.secret, Config.auth.options);
-
-        const query = {
-            method: 'PUT',
-            url: `/items/${newEvent[0].id}`,
-            headers: { 'Authorization': token },
+            url: `/items/${event.id}`,
+            headers: { 'Authorization': userToken },
             payload: { 'type': 'place' }
         };
-
-        return (
-            server.inject(query)
-                .then((response) => {
-
-                    expect(response.statusCode).to.equal(400);
-                })
+        const response = await server.inject(query);
+        expect(response.statusCode).to.equal(400);
+        expect(response.result.message).to.equal(
+            'Only event can have start and end dates'
         );
     });
 
-    it('Update item: Event without dates', () => {
+    it('Update item: Event without dates', async () => {
 
-        token = JWT.sign({ id: mod.id, timestamp: new Date() }, Config.auth.secret, Config.auth.options);
-
-        /* newEvent[2] was a 'place'*/
         const query = {
             method: 'PUT',
-            url: `/items/${newEvent[2].id}`,
-            headers: { 'Authorization': token },
+            url: `/items/${place.id}`,
+            headers: { 'Authorization': modToken },
             payload: { 'type': 'event' }
         };
-
-        return (
-            server.inject(query)
-                .then((response) => {
-
-                    expect(response.statusCode).to.equal(400);
-                })
+        const response = await server.inject(query);
+        expect(response.statusCode).to.equal(400);
+        expect(response.result.message).to.equal(
+            'Event must have a start date'
         );
     });
 
-    it('Update item: Add Linked Item', () => {
-
-        token = JWT.sign({ id: user.id, timestamp: new Date() }, Config.auth.secret, Config.auth.options);
+    it('Update item: Add Linked Item', async () => {
 
         const query = {
             method: 'PUT',
-            url: `/items/${newEvent[0].id}`,
-            headers: { 'Authorization': token },
-            payload: { 'linked_items': [1] }
+            url: `/items/${event.id}`,
+            headers: { 'Authorization': userToken },
+            payload: { 'linked_items': [place.id] }
         };
-
-        return (
-            server.inject(query)
-                .then((response) => {
-
-                    expect(response.statusCode).to.equal(200);
-                })
-        );
+        const response = await server.inject(query);
+        expect(response.statusCode).to.equal(200);
+        expect(response.result.data.linked_items[0]).to.equal(place.id);
     });
 
-    it('Update item: Add Non-Item Link', () => {
-
-        token = JWT.sign({ id: user.id, timestamp: new Date() }, Config.auth.secret, Config.auth.options);
+    it('Update item: Add Non-Item Link', async () => {
 
         const query = {
             method: 'PUT',
-            url: `/items/${newEvent[0].id}`,
-            headers: { 'Authorization': token },
-            payload: { 'linked_items': [(newEvent[0].id + 100)] }
+            url: `/items/${event.id}`,
+            headers: { 'Authorization': userToken },
+            payload: { 'linked_items': [Faker.random.uuid()] }
         };
-
-        return (
-            server.inject(query)
-                .then((response) => {
-
-                    expect(response.statusCode).to.equal(404);
-                })
+        const response = await server.inject(query);
+        expect(response.statusCode).to.equal(404);
+        expect(response.result.message).to.equal(
+            'Attempting to link item that does not exist'
         );
     });
 
-    it('Update item: Add place link to place', () => {
-
-        token = JWT.sign({ id: mod.id, timestamp: new Date() }, Config.auth.secret, Config.auth.options);
+    it('Update item: Add place link to place', async () => {
 
         const query = {
             method: 'PUT',
-            url: `/items/${newEvent[2].id}`,
-            headers: { 'Authorization': token },
-            payload: { 'linked_items': [newEvent[2].id] }
+            url: `/items/${place.id}`,
+            headers: { 'Authorization': modToken },
+            payload: { 'linked_items': [place.id] }
         };
-
-        return (
-            server.inject(query)
-                .then((response) => {
-
-                    expect(response.statusCode).to.equal(400);
-                })
+        const response = await server.inject(query);
+        expect(response.statusCode).to.equal(400);
+        expect(response.result.message).to.equal(
+            'Can\'t link place to other Items'
         );
     });
 
-    it('Update item: Add group link to place', () => {
-
-        token = JWT.sign({ id: mod.id, timestamp: new Date() }, Config.auth.secret, Config.auth.options);
+    it('Update item: Add group link to place', async () => {
 
         const query = {
             method: 'PUT',
-            url: `/items/${newEvent[2].id}`,
-            headers: { 'Authorization': token },
-            payload: { 'linked_items': [4] }
+            url: `/items/${place.id}`,
+            headers: { 'Authorization': modToken },
+            payload: { 'linked_items': [group.id] }
         };
-
-        return (
-            server.inject(query)
-                .then((response) => {
-
-                    expect(response.statusCode).to.equal(400);
-                })
+        const response = await server.inject(query);
+        expect(response.statusCode).to.equal(400);
+        expect(response.result.message).to.equal(
+            'Can\'t link place to other Items'
         );
     });
 
-    it('Update item: Add group link to activity', () => {
-
-        token = JWT.sign({ id: mod.id, timestamp: new Date() }, Config.auth.secret, Config.auth.options);
+    it('Update item: Add group link to activity', async () => {
 
         const query = {
             method: 'PUT',
-            url: `/items/${newEvent[2].id}`,
-            headers: { 'Authorization': token },
-            payload: { 'type': 'activity', 'linked_items': [4] }
+            url: `/items/${activity.id}`,
+            headers: { 'Authorization': modToken },
+            payload: { 'linked_items': [group.id] }
         };
-
-        return (
-            server.inject(query)
-                .then((response) => {
-
-                    expect(response.statusCode).to.equal(400);
-                })
+        const response = await server.inject(query);
+        expect(response.statusCode).to.equal(400);
+        expect(response.result.message).to.equal(
+            'Can\'t link activity to anything but Place'
         );
     });
 
-    it('Update item: Add group link to group', () => {
-
-        token = JWT.sign({ id: mod.id, timestamp: new Date() }, Config.auth.secret, Config.auth.options);
+    it('Update item: Add place link to activity', async () => {
 
         const query = {
             method: 'PUT',
-            url: `/items/${newEvent[2].id}`,
-            headers: { 'Authorization': token },
-            payload: { 'type': 'group', 'linked_items': [4] }
+            url: `/items/${activity.id}`,
+            headers: { 'Authorization': modToken },
+            payload: { 'linked_items': [place.id] }
         };
-
-        return (
-            server.inject(query)
-                .then((response) => {
-
-                    expect(response.statusCode).to.equal(400);
-                })
-        );
+        const response = await server.inject(query);
+        expect(response.statusCode).to.equal(200);
     });
 
-    it('Update item: Add place link to group', () => {
-
-        token = JWT.sign({ id: mod.id, timestamp: new Date() }, Config.auth.secret, Config.auth.options);
+    it('Update item: Add group link to group', async () => {
 
         const query = {
             method: 'PUT',
-            url: `/items/${newEvent[3].id}`,
-            headers: { 'Authorization': token },
-            payload: { 'linked_items': [1] }
+            url: `/items/${group.id}`,
+            headers: { 'Authorization': modToken },
+            payload: { 'linked_items': [group.id] }
         };
-
-        return (
-            server.inject(query)
-                .then((response) => {
-
-                    expect(response.statusCode).to.equal(200);
-                })
+        const response = await server.inject(query);
+        expect(response.statusCode).to.equal(400);
+        expect(response.result.message).to.equal(
+            'Can\'t link group to anything but Place'
         );
     });
 
-    it('Update item: Add event link to event', () => {
-
-        token = JWT.sign({ id: user.id, timestamp: new Date() }, Config.auth.secret, Config.auth.options);
+    it('Update item: Add place link to group', async () => {
 
         const query = {
             method: 'PUT',
-            url: `/items/${newEvent[0].id}`,
-            headers: { 'Authorization': token },
-            payload: { 'linked_items': [newEvent[1].id] }
+            url: `/items/${group.id}`,
+            headers: { 'Authorization': modToken },
+            payload: { 'linked_items': [place.id] }
         };
-
-        return (
-            server.inject(query)
-                .then((response) => {
-
-                    expect(response.statusCode).to.equal(400);
-                })
-        );
+        const response = await server.inject(query);
+        expect(response.statusCode).to.equal(200);
+        expect(response.result.data.linked_items[0]).to.equal(place.id);
     });
 
-    it('Update item: No place linked to event', () => {
-
-        token = JWT.sign({ id: user.id, timestamp: new Date() }, Config.auth.secret, Config.auth.options);
+    it('Update item: Add event link to event', async () => {
 
         const query = {
             method: 'PUT',
-            url: `/items/${newEvent[0].id}`,
-            headers: { 'Authorization': token },
-            payload: { 'linked_items': [4] }
+            url: `/items/${event.id}`,
+            headers: { 'Authorization': modToken },
+            payload: { 'linked_items': [event.id] }
         };
-
-        return (
-            server.inject(query)
-                .then((response) => {
-
-                    expect(response.statusCode).to.equal(400);
-                })
+        const response = await server.inject(query);
+        expect(response.statusCode).to.equal(400);
+        expect(response.result.message).to.equal(
+            'Can\'t link Event to Item type'
         );
     });
 
-    it('Up item: Add Tag', () => {
-
-        token = JWT.sign({ id: mod.id, timestamp: new Date() }, Config.auth.secret, Config.auth.options);
+    it('Update item: No place linked to event', async () => {
 
         const query = {
             method: 'PUT',
-            url: `/items/${newEvent[2].id}`,
-            headers: { 'Authorization': token },
+            url: `/items/${event.id}`,
+            headers: { 'Authorization': modToken },
+            payload: { 'linked_items': [] }
+        };
+        const response = await server.inject(query);
+        expect(response.statusCode).to.equal(400);
+        expect(response.result.message).to.equal(
+            'No place linked to event'
+        );
+    });
+
+    it('Update item: Add Tag', async () => {
+
+        const query = {
+            method: 'PUT',
+            url: `/items/${place.id}`,
+            headers: { 'Authorization': modToken },
             payload: { 'tags': [tag.name] }
         };
-
-        return (
-            server.inject(query)
-                .then((response) => {
-
-                    expect(response.statusCode).to.equal(200);
-                })
-        );
+        const response = await server.inject(query);
+        expect(response.statusCode).to.equal(200);
+        expect(response.result.data.tags[0]).to.equal(tag.name);
     });
 
-    it('Up item: Add Non-Tag', () => {
-
-        token = JWT.sign({ id: mod.id, timestamp: new Date() }, Config.auth.secret, Config.auth.options);
+    it('Update item: Add Non-Tag', async () => {
 
         const nonTag = Faker.lorem.word();
-
         const query = {
             method: 'PUT',
-            url: `/items/${newEvent[2].id}`,
-            headers: { 'Authorization': token },
-            payload: { 'type': 'activity', 'linked_items': [1], 'tags': [nonTag] }
+            url: `/items/${place.id}`,
+            headers: { 'Authorization': modToken },
+            payload: { 'tags': [nonTag] }
         };
-
-        return (
-            server.inject(query)
-                .then((response) => {
-
-                    expect(response.statusCode).to.equal(400);
-                })
+        const response = await server.inject(query);
+        expect(response.statusCode).to.equal(400);
+        expect(response.result.message).to.equal(
+            `Tag ${nonTag} does not exist`
         );
     });
 });

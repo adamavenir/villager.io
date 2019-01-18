@@ -1,0 +1,7 @@
+{
+    "extends": ["hapi"],
+    "plugins": ["lab"],
+    "parserOptions": {
+        "ecmaVersion": 8
+    }
+}

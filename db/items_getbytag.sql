@@ -1,4 +1,5 @@
 SELECT 
+items.id,
 items.name,
 items.type,
 items.location,

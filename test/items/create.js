@@ -4,434 +4,266 @@ const Fixtures = require('../fixtures');
 const JWT = require('jsonwebtoken');
 const Config = require('getconfig');
 const Faker = require('faker');
+
 const Server = Fixtures.server;
 const db = Fixtures.db;
 
-const { after, before, describe, it } = exports.lab = require('lab').script();
+const {
+    after,
+    before,
+    beforeEach,
+    describe,
+    it
+} = exports.lab = require('lab').script();
 const { expect } = require('code');
 
 describe('POST Items:', () => {
 
-    const event = Fixtures.event();
-    let place = Fixtures.place();
-    const group = Fixtures.group();
-
-    const stableEvent = Fixtures.event();
-    const stablePlace = Fixtures.place();
-    const stableGroup = Fixtures.group();
-
-    let server;
-
-    const user = Fixtures.user_id();
-
     const tag = Fixtures.tag();
-
+    const user = Fixtures.user_id();
     let token;
-    let eventID;
-    let placeID;
-    let groupID;
-    let activityID;
-
-    let stableItems;
+    let server;
+    let query;
 
     before(async () => {
 
         await Promise.all([
-            db.users.insert(user),
-            db.tags.insert(tag)
+            db.tags.insert(tag),
+            db.users.insert(user)
         ]);
-
-        stableItems = await Promise.all([
-            db.items.insert(stableEvent),
-            db.items.insert(stablePlace),
-            db.items.insert(stableGroup)
-        ]);
-
+        token = JWT.sign({ id: user.id, timestamp: new Date() }, Config.auth.secret, Config.auth.options);
         server = await Server;
+        query = {
+            method: 'POST',
+            url: '/items',
+            headers: { 'Authorization': token }
+        };
+    });
+
+    beforeEach(async () => {
+
+        await db.items.destroy();
     });
 
     after(async () => {
 
         await Promise.all([
-            db.users.destroy({ id: user.id }),
-            db.items.destroy({ id: eventID }),
-            db.items.destroy({ id: placeID }),
-            db.items.destroy({ id: groupID }),
-            db.items.destroy({ id: activityID }),
-            db.items.destroy({ id: stableItems[0].id }),
-            db.items.destroy({ id: stableItems[1].id }),
-            db.items.destroy({ id: stableItems[2].id }),
-            db.tags.destroy({ name: tag.name })
+            db.tags.destroy(),
+            db.users.destroy(),
+            db.items.destroy()
         ]);
     });
 
-    it('Create item, Correct', () => {
+    it('Create item, Correct', async () => {
 
-        token = JWT.sign({ id: user.id, timestamp: new Date() }, Config.auth.secret, Config.auth.options);
+        const place = await db.items.insert(Fixtures.place());
+        const event = Fixtures.event({ tags: [tag.name], linked_items: [place.id] });
 
-        event.tags = [tag.name];
+        query.payload = event;
+        const response = await server.inject(query);
+        expect(response.statusCode).to.equal(201);
+    });
 
-        const query = {
-            method: 'POST',
-            url: '/items',
-            headers: { 'Authorization': token },
-            payload: event
-        };
+    it('Create item duplicate', async () => {
 
-        return (
-            server.inject(query)
-                .then((response) => {
+        const place = Fixtures.place();
+        await db.items.insert(place);
 
-                    eventID = response.result.data.id;
-                    expect(response.statusCode).to.equal(200);
-                })
+        query.payload = place;
+        const response = await server.inject(query);
+        expect(response.statusCode).to.equal(409);
+        expect(response.result.message).to.equal(
+            'Item already exists'
         );
     });
 
-    it('Create item duplicate', () => {
+    it('Create Item: Not Event, With Dates', async () => {
 
-        const query2 = {
-            method: 'POST',
-            url: `/items`,
-            headers: { 'Authorization': token },
-            payload: event
-        };
-
-        return (
-            server.inject(query2)
-                .then((response) => {
-
-                    expect(response.statusCode).to.equal(409);
-                })
+        const place = Fixtures.place({ start_date: Faker.date.future() });
+        query.payload = place;
+        const response = await server.inject(query);
+        expect(response.statusCode).to.equal(400);
+        expect(response.result.message).to.equal(
+            'Only event can have start and end dates'
         );
     });
 
-    it('Create Item: Not Event, With Dates', () => {
+    it('Create Item: Event, No Start Date', async () => {
 
-        event.name = Faker.lorem.word();
-        event.type = 'place';
-        const query = {
-            method: 'POST',
-            url: `/items`,
-            headers: { 'Authorization': token },
-            payload: event
-        };
+        const event = Fixtures.event();
+        delete event.start_date;
 
-        return (
-            server.inject(query)
-                .then((response) => {
-
-                    expect(response.statusCode).to.equal(400);
-                })
+        query.payload = event;
+        const response = await server.inject(query);
+        expect(response.statusCode).to.equal(400);
+        expect(response.result.message).to.equal(
+            'Event must have a start date'
         );
     });
 
-    it('Create Item: Event, No Start Date', () => {
+    it('Create Item: Non-Event, End-Date', async () => {
 
-        place.type = 'event';
+        const group = Fixtures.group();
+        group.end_date = Faker.date.future();
 
-        const query = {
-            method: 'POST',
-            url: `/items`,
-            headers: { 'Authorization': token },
-            payload: place
-        };
-
-        return (
-            server.inject(query)
-                .then((response) => {
-
-                    expect(response.statusCode).to.equal(400);
-                })
+        query.payload = group;
+        const response = await server.inject(query);
+        expect(response.statusCode).to.equal(400);
+        expect(response.result.message).to.equal(
+            'Only event can have start and end dates'
         );
     });
 
-    it('Create Item: Non-Event, End-Date', () => {
+    it('Create Item: Wrong Type', async () => {
 
-        group.end_date = '01/01/2015';
-
-        const query = {
-            method: 'POST',
-            url: `/items`,
-            headers: { 'Authorization': token },
-            payload: group
-        };
-
-        return (
-            server.inject(query)
-                .then((response) => {
-
-                    expect(response.statusCode).to.equal(400);
-                })
-        );
-    });
-
-    it('Create Item: Wrong Type', () => {
-
+        const place = Fixtures.place();
         place.type = 'carnival';
 
-        const query = {
-            method: 'POST',
-            url: `/items`,
-            headers: { 'Authorization': token },
-            payload: place
-        };
-
-        return (
-            server.inject(query)
-                .then((response) => {
-
-                    expect(response.statusCode).to.equal(400);
-                })
+        query.payload = place;
+        const response = await server.inject(query);
+        expect(response.statusCode).to.equal(400);
+        expect(response.result.message).to.match(
+            /"type" must be one of/
         );
     });
 
-    it('Create Item: No Name', () => {
+    it('Create Item: No Name', async () => {
 
+        const place = Fixtures.place();
         place.name = '';
-        place.type = 'place';
 
-        const query = {
-            method: 'POST',
-            url: `/items`,
-            headers: { 'Authorization': token },
-            payload: place
-        };
-
-        return (
-            server.inject(query)
-                .then((response) => {
-
-                    expect(response.statusCode).to.equal(400);
-                })
+        query.payload = place;
+        const response = await server.inject(query);
+        expect(response.statusCode).to.equal(400);
+        expect(response.result.message).to.match(
+            /"name" is not allowed to be empty/
         );
     });
 
-    it('Create Place: Linked Items', () => {
+    it('Create Place: Linked Items', async () => {
 
-        place = Faker.lorem.word();
-        place = Fixtures.place();
-        place.linked_items = [eventID];
+        const place = Fixtures.place();
+        place.linked_items = [Faker.random.uuid()];
 
-        const query = {
-            method: 'POST',
-            url: `/items`,
-            headers: { 'Authorization': token },
-            payload: place
-        };
-
-        return (
-            server.inject(query)
-                .then((response) => {
-
-                    expect(response.statusCode).to.equal(400);
-                })
+        query.payload = place;
+        const response = await server.inject(query);
+        expect(response.statusCode).to.equal(400);
+        expect(response.result.message).to.equal(
+            'Can\'t link place to other Items'
         );
     });
 
-    it('Link Non-existent Item', () => {
+    it('Link Non-existent Item', async () => {
 
-        event.type = 'event';
-        event.linked_items = [eventID + 100];
+        const event = Fixtures.event();
+        event.linked_items = [Faker.random.uuid()];
 
-        const query = {
-            method: 'POST',
-            url: `/items`,
-            headers: { 'Authorization': token },
-            payload: event
-        };
-
-        return (
-            server.inject(query)
-                .then((response) => {
-
-                    expect(response.statusCode).to.equal(404);
-                })
+        query.payload = event;
+        const response = await server.inject(query);
+        expect(response.statusCode).to.equal(404);
+        expect(response.result.message).to.equal(
+            'Attempting to link item that does not exist'
         );
     });
 
-    it('Link Event to Event', () => {
+    it('Link Event to Event', async () => {
 
-        event.name = Faker.lorem.word();
-        event.type = 'event';
-        event.linked_items = [stableItems[0].id];
+        const eventOne = await db.items.insert(Fixtures.event());
+        const eventTwo = Fixtures.event();
+        eventTwo.linked_items = [eventOne.id];
 
-        const query = {
-            method: 'POST',
-            url: `/items`,
-            headers: { 'Authorization': token },
-            payload: event
-        };
-
-        return (
-            server.inject(query)
-                .then((response) => {
-
-                    expect(response.statusCode).to.equal(400);
-                })
+        query.payload = eventTwo;
+        const response = await server.inject(query);
+        expect(response.statusCode).to.equal(400);
+        expect(response.result.message).to.equal(
+            'Can\'t link Event to Item type'
         );
     });
 
-    it('Link Group to Place', () => {
+    it('Link Group to Place', async () => {
 
-        place.name = Faker.lorem.word();
-        place.type = 'group';
-        delete place.linked_items;
-        place.linked_items = [stableItems[1].id];
+        const place = await db.items.insert(Fixtures.place());
+        const group = Fixtures.group();
+        group.linked_items = [place.id];
 
-        const query = {
-            method: 'POST',
-            url: `/items`,
-            headers: { 'Authorization': token },
-            payload: place
-        };
+        query.payload = group;
+        const response = await server.inject(query);
+        expect(response.statusCode).to.equal(201);
+    });
 
-        return (
-            server.inject(query)
-                .then((response) => {
+    it('Link Group to not Place', async () => {
 
-                    groupID = response.result.data.id;
-                    expect(response.statusCode).to.equal(200);
-                })
+        const activity = await db.items.insert(Fixtures.activity());
+        const group = Fixtures.group();
+        group.linked_items = [activity.id];
+
+        query.payload = group;
+        const response = await server.inject(query);
+        expect(response.statusCode).to.equal(400);
+        expect(response.result.message).to.equal(
+            'Can\'t link group to anything but Place'
         );
     });
 
-    it('Link Group to not Place', () => {
+    it('Link Activity to Place', async () => {
 
-        place.name = Faker.lorem.word();
-        place.type = 'group';
-        delete place.linked_items;
-        place.linked_items = [stableItems[0].id];
+        const place = await db.items.insert(Fixtures.place());
+        const activity = Fixtures.activity();
+        activity.linked_items = [place.id];
 
-        const query = {
-            method: 'POST',
-            url: `/items`,
-            headers: { 'Authorization': token },
-            payload: place
-        };
+        query.payload = activity;
+        const response = await server.inject(query);
+        expect(response.statusCode).to.equal(201);
+    });
 
-        return (
-            server.inject(query)
-                .then((response) => {
+    it('Link Activity to not Place', async () => {
 
-                    expect(response.statusCode).to.equal(400);
-                })
+        const group = await db.items.insert(Fixtures.group());
+        const activity = Fixtures.activity();
+        activity.linked_items = [group.id];
+
+        query.payload = activity;
+        const response = await server.inject(query);
+        expect(response.statusCode).to.equal(400);
+        expect(response.result.message).to.equal(
+            'Can\'t link activity to anything but Place'
         );
     });
 
-    it('Link Activity to Place', () => {
-
-        place.name = Faker.lorem.word() + 'a';
-        place.type = 'activity';
-        delete place.linked_items;
-        place.linked_items = [stableItems[1].id];
-
-        const query = {
-            method: 'POST',
-            url: `/items`,
-            headers: { 'Authorization': token },
-            payload: place
-        };
-
-        return (
-            server.inject(query)
-                .then((response) => {
-
-                    activityID = response.result.data.id;
-                    expect(response.statusCode).to.equal(200);
-                })
-        );
-    });
-
-    it('Link Activity to not Place', () => {
-
-        place.name = Faker.lorem.word();
-        place.type = 'activity';
-        delete place.linked_items;
-        place.linked_items = [stableItems[2].id];
-
-        const query = {
-            method: 'POST',
-            url: `/items`,
-            headers: { 'Authorization': token },
-            payload: place
-        };
-
-        return (
-            server.inject(query)
-                .then((response) => {
-
-                    expect(response.statusCode).to.equal(400);
-                })
-        );
-    });
-
-    it('Incorrect Tags', () => {
+    it('Incorrect Tags', async () => {
 
         const falseTag = Faker.lorem.word();
-
-        delete place.linked_items;
-        place.name = Faker.lorem.word();
+        const place = Fixtures.place();
         place.tags = [falseTag];
 
-        const query = {
-            method: 'POST',
-            url: `/items`,
-            headers: { 'Authorization': token },
-            payload: place
-        };
-
-        return (
-            server.inject(query)
-                .then((response) => {
-
-                    expect(response.statusCode).to.equal(400);
-                })
+        query.payload = place;
+        const response = await server.inject(query);
+        expect(response.statusCode).to.equal(400);
+        expect(response.result.message).to.equal(
+            `Tag ${falseTag} does not exist`
         );
     });
 
-    it('Place without links', () => {
+    it('Place without links', async () => {
 
-        delete place.linked_items;
-        place.name = Faker.lorem.word();
-        delete place.tags;
-        place.type = 'place';
+        const place = Fixtures.place();
 
-        const query = {
-            method: 'POST',
-            url: `/items`,
-            headers: { 'Authorization': token },
-            payload: place
-        };
-
-        return (
-            server.inject(query)
-                .then((response) => {
-
-                    placeID = response.result.data.id;
-                    expect(response.statusCode).to.equal(200);
-                })
-        );
+        query.payload = place;
+        const response = await server.inject(query);
+        expect(response.statusCode).to.equal(201);
     });
-    it('Event without place', () => {
 
-        delete event.linked_items;
-        event.name = Faker.lorem.word();
-        event.linked_items = [stableItems[2].id];
+    it('Event without place', async () => {
 
-        const query = {
-            method: 'POST',
-            url: `/items`,
-            headers: { 'Authorization': token },
-            payload: event
-        };
+        const group = await db.items.insert(Fixtures.group());
+        const event = Fixtures.event();
+        event.linked_items = [group.id];
 
-        return (
-            server.inject(query)
-                .then((response) => {
-
-                    expect(response.statusCode).to.equal(400);
-                })
+        query.payload = event;
+        const response = await server.inject(query);
+        expect(response.statusCode).to.equal(400);
+        expect(response.result.message).to.equal(
+            `Event required to be linked to Place`
         );
     });
 });

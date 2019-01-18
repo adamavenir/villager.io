@@ -1,15 +1,17 @@
 'use strict';
-const Joi = require('joi');
+
 const Boom = require('boom');
-const Schema = require('../../lib/schema');
-const swagger = Schema.generate(['401', '404', '400']);
+const Schema = require('../../lib/responseSchema');
+const RequestSchema = require('../../lib/requestSchema');
+
+const swagger = Schema.generate(['401', '400']);
 
 module.exports = {
     description: 'Merge item',
-    tags: ['api', 'mod'],
+    tags: ['api', 'admin', 'mod'],
     validate: {
-        headers: Joi.object({ 'authorization': Joi.string().required() }).unknown(),
-        payload: Joi.object({ 'item_id': Joi.array().items(Joi.number()) })
+        headers: RequestSchema.tokenRequired,
+        payload: RequestSchema.mergeItemsPayload
     },
     handler: async function (request, reply) {
 
@@ -17,26 +19,13 @@ module.exports = {
         if (credentials.role === 'user') {
             throw Boom.unauthorized('Not permitted use this feature');
         }
-        //let numItems = request.payload.ids.length();
+
         const item_id = request.payload.item_id;
 
         await this.db.list_items.update({ item_id: item_id[1] },{ item_id: item_id[0] });
         await this.db.item_owners.update({ item_id: item_id[1] },{ item_id: item_id[0] });
         await this.db.item_tags.destroy({ item_id: item_id[1] });
-
-        // console.log( await this.db.list_items.find({item_id: 2}))
-        // console.log( await this.db.items.find({id: 2}))
         await this.db.items.destroy({ id: item_id[1] });
-
-        // async function asyncForEach(array, callback) {
-        //     for (let index = 0; index < array.length; index++) {
-        //       await callback(array[index], index, array)
-        //     }
-        //   }
-
-        // asyncForEach(item_id, async (id) => {
-        //     await this.db.list_items.update(id, {item_id: item_id[0]});
-        //   })
 
         return reply({ message: 'Items Merged' });
     },

@@ -1,8 +1,9 @@
 'use strict';
 
-const Joi = require('joi');
 const Boom = require('boom');
-const Schema = require('../../lib/schema');
+const Schema = require('../../lib/responseSchema');
+const RequestSchema = require('../../lib/requestSchema');
+
 const swagger = Schema.generate(['404']);
 
 module.exports = {
@@ -10,9 +11,7 @@ module.exports = {
     tags: ['api', 'users', 'public'],
     auth: false,
     validate: {
-        params: {
-            username: Joi.string().required()
-        }
+        params: RequestSchema.usernameParam
     },
     handler: async function (request, reply) {
 
@@ -21,6 +20,7 @@ module.exports = {
         if (!user) {
             throw Boom.notFound();
         }
+
         const favorite_list = await this.db.list_items.by_list_id({ id: user_id.id });
         return reply({ data: { user, favorite_list } });
     },

@@ -1,19 +1,17 @@
 'use strict';
 
-const Joi = require('joi');
 const Boom = require('boom');
-const Schema = require('../../lib/schema');
+const Schema = require('../../lib/responseSchema');
+const RequestSchema = require('../../lib/requestSchema');
+
 const swagger = Schema.generate(['400','404']);
 
 module.exports = {
     description: 'Add list item',
     tags: ['api', 'lists'],
     validate: {
-        payload: {
-            item_id: Joi.number().required(),
-            list_id: Joi.string().guid().required()
-        },
-        headers: Joi.object({ 'authorization': Joi.string().required() }).unknown()
+        payload: RequestSchema.listItemPayload,
+        headers: RequestSchema.tokenRequired
     },
     handler: async function (request, reply) {
 
@@ -24,21 +22,23 @@ module.exports = {
         if (!founditem) {
             throw Boom.notFound('Item not found');
         }
+
         if (!foundlist) {
             throw Boom.notFound('List not found');
         }
-        if (foundlist.owner !== credentials.id) {
-            throw Boom.forbidden();
+
+        if (foundlist.owner !== credentials.username) {
+            throw Boom.unauthorized();
         }
 
         await this.db.list_items.insert(request.payload);
-        return reply({ message: 'item inserted into list' });
+        return reply({ message: 'item inserted into list' }).code(201);
     },
-    // response: {
-    //     status: {
-    //         200: Schema.list_response
-    //     }
-    // },
+    response: {
+        status: {
+            201: Schema.message_response
+        }
+    },
     plugins: {
         'hapi-swagger': swagger
     }

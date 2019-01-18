@@ -1,8 +1,7 @@
 'use strict';
 
-const JWT = require('jsonwebtoken');
-const Config = require('getconfig');
 const Fixtures = require('../fixtures');
+
 const Server = Fixtures.server;
 const db = Fixtures.db;
 
@@ -14,40 +13,35 @@ describe('GET /items/tags/{name}', () => {
 
     let server;
 
-    const user = Fixtures.user_id();
-    const place = Fixtures.place();
+    let place;
     const tag = Fixtures.tag();
-    let newPlace;
 
     before(async () => {
 
         server = await Server;
 
-        newPlace = await Promise.all([
-            db.items.insert(place)
-        ]);
-        await Promise.all([
-            db.users.insert(user),
-            db.tags.insert(tag),
-            db.item_tags.insert({ item_id: newPlace[0].id, tag_name: tag.name })
-        ]);
+        place = await db.items.insert(Fixtures.place());
+        await db.tags.insert(tag);
+        await db.item_tags.insert({ item_id: place.id, tag_name: tag.name });
     });
 
     after(async () => {
 
         await Promise.all([
-            db.users.destroy({ id: user.id }),
-            db.items.destroy({ id: newPlace[0].id }),
-            db.tags.destroy({ name: tag.name })
+            db.items.destroy(),
+            db.tags.destroy(),
+            db.item_tags.destroy()
         ]);
 
     });
-    it('list by tag', () => {
+    it('list by tag', async () => {
 
-        const token = JWT.sign({ id: user.id, timestamp: new Date() }, Config.auth.secret, Config.auth.options);
-        return server.inject({ method: 'get', url: `/items/tags/${tag.name}`, headers: { 'Authorization': token } }).then((res) => {
-
-            expect(res.statusCode).to.equal(200);
-        });
+        const query = {
+            method: 'GET',
+            url: `/items/tags/${tag.name}`
+        };
+        const response = await server.inject(query);
+        expect(response.statusCode).to.equal(200);
+        expect(response.result.data[0].id).to.equal(place.id);
     });
 });

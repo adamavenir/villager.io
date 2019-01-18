@@ -1,4 +1,5 @@
 'use strict';
+
 const Controllers = require('keyfob').load({ path: './controllers', fn: require });
 
 module.exports = [
@@ -7,7 +8,6 @@ module.exports = [
     { method: 'GET', path: '/users', config: Controllers.admin.listusers }, //for testing
 
     //Authentication
-    { method: 'POST', path: '/create_account', config: Controllers.auth.adduser },
     { method: 'POST', path: '/login', config: Controllers.auth.login },
     { method: 'GET', path: '/logout', config: Controllers.auth.logout },
 
@@ -35,10 +35,11 @@ module.exports = [
     { method: 'DELETE', path: '/item_owners', config: Controllers.itemowners.destroy },
 
     //users
+    { method: 'POST', path: '/users', config: Controllers.users.create },
     { method: 'GET', path: '/users/profile', config: Controllers.users.get_profile },
     { method: 'GET', path: '/users/{username}', config: Controllers.users.get },
-    { method: 'GET', path: '/users/{username}/favorites', config: Controllers.users.get_favorites },
     { method: 'GET', path: '/users/{username}/lists', config: Controllers.users.get_lists },
+    { method: 'GET', path: '/users/{username}/starred', config: Controllers.users.get_starred_items },
     { method: 'PUT', path: '/users/{username}', config: Controllers.users.update },
     { method: 'DELETE', path: '/users/{username}', config: Controllers.users.destroy },
 
@@ -51,6 +52,10 @@ module.exports = [
 
     //list items
     { method: 'POST', path: '/lists/listitems', config: Controllers.listitems.create },
-    { method: 'DELETE', path: '/lists/listitems', config: Controllers.listitems.destroy }
+    { method: 'DELETE', path: '/lists/listitems', config: Controllers.listitems.destroy },
+
+    //starred_items
+    { method: 'POST', path: '/starred_items', config: Controllers.starreditems.create },
+    { method: 'DELETE', path: '/starred_items', config: Controllers.starreditems.destroy }
 
 ];

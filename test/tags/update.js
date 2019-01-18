@@ -3,6 +3,7 @@
 const Fixtures = require('../fixtures');
 const JWT = require('jsonwebtoken');
 const Config = require('getconfig');
+
 const Server = Fixtures.server;
 const db = Fixtures.db;
 
@@ -47,7 +48,8 @@ describe('PUT Tags:', () => {
         const query = {
             method: 'PUT',
             url:    `/tags/${tag2.name}`,
-            headers: { 'authorization': token }
+            headers: { 'authorization': token },
+            payload: tag1
         };
 
         return (
@@ -65,7 +67,8 @@ describe('PUT Tags:', () => {
         const query = {
             method: 'PUT',
             url:    `/tags/${tag2.name}`,
-            headers: { 'authorization': token }
+            headers: { 'authorization': token },
+            payload: tag1
         };
         return (
             server.inject(query)

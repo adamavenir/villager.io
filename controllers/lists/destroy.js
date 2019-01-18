@@ -1,18 +1,17 @@
 'use strict';
 
-const Joi = require('joi');
 const Boom = require('boom');
-const Schema = require('../../lib/schema');
-const swagger = Schema.generate(['400']);
+const Schema = require('../../lib/responseSchema');
+const RequestSchema = require('../../lib/requestSchema');
+
+const swagger = Schema.generate(['400', '401', '404']);
 
 module.exports = {
     description: 'Delete list',
     tags: ['api', 'lists'],
     validate: {
-        params: {
-            id: Joi.string().guid().required(),
-            headers: Joi.object({ 'authorization': Joi.string().required() }).unknown()
-        }
+        params: RequestSchema.idParam,
+        headers: RequestSchema.tokenRequired
     },
     handler: async function (request, reply) {
 
@@ -23,7 +22,7 @@ module.exports = {
             throw Boom.notFound('List was not found.');
         }
 
-        if (credentials.id !== list.owner && credentials.role !== 'admin') {
+        if (credentials.username !== list.owner && credentials.role !== 'admin') {
             throw Boom.unauthorized('Unauthorized to delete list.');
         }
 
@@ -32,6 +31,11 @@ module.exports = {
         await this.db.lists.destroy({ id: list.id });
 
         return reply(null).code(204);
+    },
+    response: {
+        status: {
+            204: Schema.null_response
+        }
     },
     plugins: {
         'hapi-swagger': swagger

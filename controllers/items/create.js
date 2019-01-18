@@ -1,8 +1,10 @@
 'use strict';
+
 const { forEach } = require('p-iteration');
-const Joi = require('joi');
 const Boom = require('boom');
-const Schema = require('../../lib/schema');
+const Schema = require('../../lib/responseSchema');
+const RequestSchema = require('../../lib/requestSchema');
+
 const swagger = Schema.generate(['409']);
 
 module.exports = {
@@ -10,9 +12,7 @@ module.exports = {
     tags: ['api', 'items'],
     validate: {
         payload: Schema.additem,
-        headers: Joi.object({
-            'authorization': Joi.string().required()
-        }).unknown()
+        headers: RequestSchema.tokenRequired
     },
     handler: async function (request, reply) {
 
@@ -36,12 +36,14 @@ module.exports = {
                 if (!request.payload.start_date) {
                     throw Boom.badRequest('Event must have a start date');
                 }
+
                 break;
 
             case 'place':
                 if (request.payload.linked_items) {
                     throw Boom.badRequest('Can\'t link place to other Items');
                 }
+
                 break;
 
             default:
@@ -52,7 +54,7 @@ module.exports = {
 
         if (tags) {
             // remove duplicates and ignore instead of throwing error
-            const uniqueTags = [... new Set(tags)];
+            const uniqueTags = [...new Set(tags)];
 
             await forEach(uniqueTags, async (tag) => {
 
@@ -61,6 +63,7 @@ module.exports = {
                     await this.db.items.destroy({ id: returnedItem.id });
                     throw Boom.badRequest(`Tag ${tag} does not exist`);
                 }
+
                 await this.db.item_tags.insert({ item_id: returnedItem.id, tag_name: tag });
             });
         }
@@ -115,7 +118,7 @@ module.exports = {
                 }
             }
 
-            const uniqueLinks = [... new Set(linked_items)];
+            const uniqueLinks = [...new Set(linked_items)];
 
             await forEach(uniqueLinks, async (item) => {
 
@@ -123,14 +126,14 @@ module.exports = {
             });
 
             returnedItem.linked_items = linked_items;
-        };
+        }
 
-        return reply({ data: returnedItem });
+        return reply({ data: returnedItem }).code(201);
     },
 
     response: {
         status: {
-            200: Schema.item_response
+            201: Schema.item_response
         }
     },
 

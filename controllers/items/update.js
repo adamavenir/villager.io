@@ -1,23 +1,27 @@
 'use strict';
+
 const { forEach } = require('p-iteration');
-const Joi = require('joi');
 const Boom = require('boom');
-const Schema = require('../../lib/schema');
-const swagger = Schema.generate(['401', '404', '400']);
+const Schema = require('../../lib/responseSchema');
+const RequestSchema = require('../../lib/requestSchema');
+
+const swagger = Schema.generate(['401', '404', '400', '409']);
 
 module.exports = {
     description: 'Update item',
     tags: ['api', 'items'],
     validate: {
-        params: {
-            id: Joi.number().required()
-        },
+        params: RequestSchema.idParam,
         payload: Schema.updateitem,
-        headers: Joi.object({
-            'authorization': Joi.string().required()
-        }).unknown()
+        headers: RequestSchema.tokenRequired
     },
     handler: async function (request, reply) {
+
+        const item = await this.db.items.findOne({ id: request.params.id });
+
+        if (!item) {
+            throw Boom.notFound('Item not found');
+        }
 
         const tags = request.payload.tags;
         const linked_items = request.payload.linked_items;
@@ -32,26 +36,30 @@ module.exports = {
             }
         }
 
-        const item = await this.db.items.findOne({ id: request.params.id });
-
-        if (!item) {
-            throw Boom.notFound('Item not found');
-        }
-
         if (temp.location) {
             item.location = temp.location;
         }
+
         if (temp.start_date) {
             item.start_date = temp.start_date;
         }
+
         if (temp.end_date) {
             item.end_date = temp.end_date;
         }
+
         if (temp.type){
             item.type = temp.type;
         }
+
         if (temp.name) {
             item.name = temp.name;
+
+            const inTable = await this.db.items.find({ name: temp.name, id: { $ne: request.params.id } });
+
+            if (inTable[0]) {
+                throw Boom.conflict(`Item already exists with name.`);
+            }
         }
 
         switch (item.type) {
@@ -59,6 +67,7 @@ module.exports = {
                 if (!item.start_date) {
                     throw Boom.badRequest('Event must have a start date');
                 }
+
                 break;
             case 'place':
             case 'group':
@@ -66,6 +75,7 @@ module.exports = {
                 if (item.start_date || item.end_date) {
                     throw Boom.badRequest('Only event can have start and end dates');
                 }
+
                 break;
             default:
                 // throw Boom.badRequest('Item must be "event", "place", "activity", or "group"');
@@ -130,7 +140,7 @@ module.exports = {
 
         if (tags) {
             // remove duplicates and ignore instead of throwing error
-            const uniqueTags = [... new Set(tags)];
+            const uniqueTags = [...new Set(tags)];
 
             await this.db.item_tags.destroy({ item_id: returnedItem.id });
 
@@ -140,13 +150,14 @@ module.exports = {
                 if (!check_tags) {
                     throw Boom.badRequest(`Tag ${tag} does not exist`);
                 }
+
                 await this.db.item_tags.insert({ item_id: returnedItem.id, tag_name: tag });
             });
         }
 
         if (linked_items) {
             // remove duplicates and ignore instead of throwing error
-            const uniqueLinks = [... new Set(linked_items)];
+            const uniqueLinks = [...new Set(linked_items)];
 
             await this.db.linked_items.destroy({ item_id: returnedItem.id });
 

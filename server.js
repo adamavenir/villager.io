@@ -28,6 +28,7 @@ server.on('request-error', (err, m) => {
 //$lab:coverage:on$
 
 exports.db = db; //For tests to pick up
+
 exports.server = server.register([{
     register: require('inert')
 }, {
@@ -75,6 +76,7 @@ exports.server = server.register([{
             if (!user) {
                 return callback(null, false); //user is not valid
             }
+
             //$lab:coverage:on$
             const logout = user.logout.getTime();
             const timestamp = Date.parse(decoded.timestamp);
@@ -82,6 +84,7 @@ exports.server = server.register([{
 
                 return callback(null, false); //user is not valid
             }
+
             return callback(null, true, user); //user is valid
         }
     });

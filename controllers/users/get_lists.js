@@ -1,20 +1,18 @@
 'use strict';
 
-const Joi = require('joi');
 const Boom = require('boom');
-const uuid = require('uuid').v4;
 
-const Schema = require('../../lib/schema');
-const swagger = Schema.generate();
+const Schema = require('../../lib/responseSchema');
+const RequestSchema = require('../../lib/requestSchema');
+
+const swagger = Schema.generate(['404']);
 
 module.exports = {
     description: 'Returns users lists',
     tags: ['api', 'users', 'public'],
     auth: false,
     validate: {
-        params: {
-            username: Joi.string().required()
-        }
+        params: RequestSchema.usernameParam
     },
     handler: async function (request, reply) {
 
@@ -22,21 +20,13 @@ module.exports = {
         if (!user) {
             throw Boom.notFound();
         }
-        const userlists = await this.db.lists.getAllByOwner({ owner: user.id });
-        if (!userlists[0]) {
-            throw Boom.notFound('User has no lists');
-        }
+
+        const userlists = await this.db.lists.getAllByOwner({ owner: user.username });
         return reply({ data: userlists });
     },
     response: {
         status: {
-            200: {
-                data: Joi.array().items(Joi.object({
-                    id: Joi.string().guid().example(uuid()),
-                    name: Joi.string().required().example('mon nom est'),
-                    description: Joi.string().required().example('description described descriptively').allow(null)
-                }))
-            }
+            200: Schema.lists_no_owner_response
         }
     },
     plugins: {

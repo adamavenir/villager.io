@@ -1,16 +1,17 @@
 'use strict';
 
-const Joi = require('joi');
 const Boom = require('boom');
-const Schema = require('../../lib/schema');
-const swagger = Schema.generate(['401', '404']);
+const Schema = require('../../lib/responseSchema');
+const RequestSchema = require('../../lib/requestSchema');
+
+const swagger = Schema.generate(['400', '401', '404']);
 
 module.exports = {
     description: 'Delete tag category from use and all items',
-    tags: ['api', 'mod'],
+    tags: ['api', 'tags'],
     validate: {
-        payload: Joi.object({ 'name': Joi.string().required() }),
-        headers: Joi.object({ 'authorization': Joi.string().required() }).unknown()
+        payload: RequestSchema.tagPayload,
+        headers: RequestSchema.tokenRequired
     },
     handler: async function (request, reply) {
 
@@ -18,6 +19,7 @@ module.exports = {
         if (credentials.role === 'user') {
             throw Boom.unauthorized();
         }
+
         if (!await this.db.tags.findOne({ name: request.payload.name })) {
             throw Boom.notFound('Tag doesn\'t exist');
         }
@@ -26,11 +28,11 @@ module.exports = {
 
         return reply(null).code(204);
     },
-    // response: {
-    //     status: {
-    //         200: Schema
-    //     }
-    // },
+    response: {
+        status: {
+            204: Schema.null_response
+        }
+    },
     plugins: {
         'hapi-swagger': swagger
     }

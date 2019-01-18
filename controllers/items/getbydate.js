@@ -1,19 +1,16 @@
 'use strict';
 
-const Joi = require('joi');
-//const Boom = require('boom');
-// const server = require('../../server');
-const Schema = require('../../lib/schema');
-const swagger = Schema.generate(['404']);
+const Schema = require('../../lib/responseSchema');
+const RequestSchema = require('../../lib/requestSchema');
+
+const swagger = Schema.generate([]);
 
 module.exports = {
     description: 'Returns all items created within time period given.',
     tags: ['api', 'public'],
     auth: false,
     validate: {
-        params: {
-            days: Joi.number().required()
-        }
+        params: RequestSchema.daysParam
     },
     handler: async function (request, reply) {
 
@@ -26,11 +23,11 @@ module.exports = {
         /* Add pagination here */
         return reply({ data: foundItems });
     },
-    /*response: {
+    response: {
         status: {
             200: Schema.items_response
         }
-    },*/
+    },
     plugins: {
         'hapi-swagger': swagger
     }

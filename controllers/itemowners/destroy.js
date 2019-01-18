@@ -1,9 +1,9 @@
 'use strict';
 
-const Joi = require('joi');
 const Boom = require('boom');
-// const server = require('../../server');
-const Schema = require('../../lib/schema');
+const Schema = require('../../lib/responseSchema');
+const RequestSchema = require('../../lib/requestSchema');
+
 const swagger = Schema.generate(['404','401']);
 
 module.exports = {
@@ -11,7 +11,7 @@ module.exports = {
     tags: ['api', 'mod'],
     validate: {
         payload: Schema.itemowner,
-        headers: Joi.object({ 'authorization': Joi.string().required() }).unknown()
+        headers: RequestSchema.tokenRequired
     },
     handler: async function (request, reply) {
 
@@ -22,6 +22,7 @@ module.exports = {
             throw Boom.unauthorized('Not permitted use this feature');
         }
         // -------------------- Checks if relation exists in Tables ------------------- //
+
         const relation = await this.db.item_owners.findOne({ username, item_id });
 
         /**
@@ -38,7 +39,7 @@ module.exports = {
     },
     response: {
         status: {
-            204: Joi.only(null).label('Null')
+            204: Schema.null_response
         }
     },
     plugins: {

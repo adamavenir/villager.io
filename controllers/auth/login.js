@@ -1,37 +1,46 @@
 'use strict';
 
 const JWT = require('jsonwebtoken');
-const Joi = require('joi');
 const Boom = require('boom');
-const Schema = require('../../lib/schema');
-const swagger = Schema.generate(['401']);
+const Schema = require('../../lib/responseSchema');
+const RequestSchema = require('../../lib/requestSchema');
 const Config = require('getconfig');
+const Bcrypt = require('bcrypt');
+
+const swagger = Schema.generate(['401']);
 
 module.exports = {
     description: 'Login user',
     tags: ['api', 'auth'],
     auth: false,
     validate: {
-        payload: {
-            username: Joi.string().required(),
-            password: Joi.string().required()
-        }
+        payload: RequestSchema.authPayload
     },
     handler: async function (request, reply){
 
-        const find_user = await this.db.users.findOne({ username: request.payload.username, password: request.payload.password }, ['id']);
-        if (!find_user) {
-            throw Boom.unauthorized('Username or password is invalid');
+        const user = await this.db.users.byIdentifier(
+            { username: request.payload.username }
+        );
+        if (!user) {
+            throw Boom.unauthorized('Username/email not found');
         }
-        else {
-            find_user.timestamp = new Date();
-            const token = JWT.sign({ ...find_user }, Config.auth.secret, Config.auth.options);
-            return reply({ data: { token } });
+
+        const match = await Bcrypt.compare(request.payload.password, user.password);
+        if (!match) {
+            throw Boom.unauthorized('Invalid credentials');
         }
+
+        const token = JWT.sign(
+            { id: user.id, username: user.username, timestamp: new Date() },
+            Config.auth.secret,
+            Config.auth.options
+        );
+        return reply({ data: { token } });
+
     },
     response: {
         status: {
-            200: Joi.object({ data:{ token: [Joi.string().example('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImZmMGMzOGNiLTY1YzItNGRkMi1hMmU0LWJhNjBhYmM0NjBlMSIsInRpbWVzdGFtcCI6IjIwMTgtMDItMjZUMjM6NTQ6MTUuNDU1WiIsImlhdCI6MTUxOTY4OTI1NX0.3qXMbtdRYrC4Tlh14ykyOtt3B8RmtM9t3rVlIs7rysM'), Joi.number()] } })
+            200: Schema.token_response
         }
     },
     plugins: {

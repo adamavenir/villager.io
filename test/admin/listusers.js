@@ -3,6 +3,7 @@
 const JWT = require('jsonwebtoken');
 const Config = require('getconfig');
 const Fixtures = require('../fixtures');
+
 const Server = Fixtures.server;
 const db = Fixtures.db;
 

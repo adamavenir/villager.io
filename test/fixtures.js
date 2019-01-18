@@ -2,11 +2,11 @@
 
 const Faker = require('faker');
 
-// Ex
 const Server = require('../server');
-exports.server = Server.server;
-exports.db = Server.db;
 
+exports.server = Server.server;
+
+exports.db = Server.db;
 
 // Build and export a fake user
 exports.user = function (attrs, id) {
@@ -20,6 +20,7 @@ exports.user = function (attrs, id) {
 
     return Object.assign(defaults, attrs);
 };
+
 exports.user_id = function (attrs, id) {
 
     const defaults = {
@@ -46,6 +47,7 @@ exports.user_admin = function (attrs, id) {
 
     return Object.assign(defaults, attrs);
 };
+
 exports.user_mod = function (attrs, id) {
 
     const defaults = {
@@ -69,7 +71,7 @@ exports.event = function (attrs, id) {
         type: 'event',
         start_date: Faker.date.past(),
         end_date: Faker.date.future(),
-        linked_items: [1]
+        linked_items: []
     };
     return Object.assign(defaults, attrs);
 };
@@ -84,7 +86,7 @@ exports.event_id = function (attrs, id) {
         type: 'event',
         start_date: Faker.date.past(),
         end_date: Faker.date.future(),
-        linked_items: [1]
+        linked_items: []
     };
     return Object.assign(defaults, attrs);
 };
@@ -110,6 +112,7 @@ exports.place = function (attrs, id) {
     };
     return Object.assign(defaults, attrs);
 };
+
 // Build and export a fake group
 exports.group = function (attrs, id) {
 

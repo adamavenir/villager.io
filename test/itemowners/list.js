@@ -3,6 +3,8 @@
 const JWT = require('jsonwebtoken');
 const Config = require('getconfig');
 const Fixtures = require('../fixtures');
+const Faker = require('faker');
+
 const Server = Fixtures.server;
 const db = Fixtures.db;
 
@@ -66,7 +68,7 @@ describe('List /item_owners', () => {
     });
     it('Get owners of fake item', () => {
 
-        const fakeItem = newEvent[0].id + 100;
+        const fakeItem = Faker.random.uuid();
 
         const token = JWT.sign({ id: admin.id, timestamp: new Date() }, Config.auth.secret, Config.auth.options);
         return server.inject({ method: 'get', url: `/item_owners/${fakeItem}`, headers: { 'Authorization': token } }).then((res) => {

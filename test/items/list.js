@@ -1,8 +1,7 @@
 'use strict';
 
-const JWT = require('jsonwebtoken');
-const Config = require('getconfig');
 const Fixtures = require('../fixtures');
+
 const Server = Fixtures.server;
 const db = Fixtures.db;
 
@@ -13,33 +12,55 @@ const { expect } = require('code');
 describe('GET /items', () => {
 
     let server;
-    const user = Fixtures.user_id();
-    const place = Fixtures.place({}, true);
+    const place = Fixtures.place();
+    let event;
 
     before(async () => {
 
         server = await Server;
 
-        await Promise.all([
-            db.users.insert(user),
-            db.items.insert(place)
-        ]);
+        await db.items.insert(place);
+        event = await db.items.insert(Fixtures.event({ linked_items: [place.id] }));
+
     });
 
     after(async () => {
 
         await Promise.all([
-            db.users.destroy({ id: user.id }),
-            db.items.destroy({ name: place.name })
+            db.items.destroy()
         ]);
 
     });
-    it('Get items', () => {
+    it('Get items', async () => {
 
-        const token = JWT.sign({ id: user.id, timestamp: new Date() }, Config.auth.secret, Config.auth.options);
-        return server.inject({ method: 'get', url: `/items`, headers: { 'Authorization': token } }).then((res) => {
+        const query = {
+            method: 'GET',
+            url: '/items'
+        };
+        const response = await server.inject(query);
+        expect(response.statusCode).to.equal(200);
+        expect(response.result.data.length).to.equal(2);
+    });
 
-            expect(res.statusCode).to.equal(200);
-        });
+    it('GET items by type', async () => {
+
+        const query = {
+            method: 'GET',
+            url: '/items?type=event'
+        };
+        const response = await server.inject(query);
+        expect(response.statusCode).to.equal(200);
+        expect(response.result.data[0].name).to.equal(event.name);
+    });
+
+    it('GET items by name', async () => {
+
+        const query = {
+            method: 'GET',
+            url: `/items?name=${place.name}`
+        };
+        const response = await server.inject(query);
+        expect(response.statusCode).to.equal(200);
+        expect(response.result.data[0].name).to.equal(place.name);
     });
 });

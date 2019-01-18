@@ -1,6 +1,7 @@
 'use strict';
 
 const Fixtures = require('../fixtures');
+
 const Server = Fixtures.server;
 const db = Fixtures.db;
 
@@ -17,7 +18,7 @@ describe('POST /login', () => {
 
         server = await Server;
         const payload = user;
-        return server.inject({ method: 'post', url: '/create_account', payload });
+        await server.inject({ method: 'post', url: '/users', payload });
     });
 
 
@@ -28,12 +29,28 @@ describe('POST /login', () => {
         ]);
     });
 
-    it('login', () => {
+    it('login with username', () => {
 
         const payload = { username: user.username, password: user.password };
         return server.inject({ method: 'post', url: '/login', payload }).then((res) => {
 
             expect(res.statusCode).to.equal(200);
+        });
+    });
+    it('login with email', () => {
+
+        const payload = { username: user.email, password: user.password };
+        return server.inject({ method: 'post', url: '/login', payload }).then((res) => {
+
+            expect(res.statusCode).to.equal(200);
+        });
+    });
+    it('login with wrong username', () => {
+
+        const payload = { username: 'wrong', password: user.password };
+        return server.inject({ method: 'post', url: '/login', payload }).then((res) => {
+
+            expect(res.statusCode).to.equal(401);
         });
     });
     it('login wrong password', () => {

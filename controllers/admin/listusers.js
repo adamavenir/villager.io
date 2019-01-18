@@ -1,15 +1,15 @@
 'use strict';
 
-const Joi = require('joi');
 const Boom = require('boom');
+const Schema = require('../../lib/responseSchema');
+const RequestSchema = require('../../lib/requestSchema');
 
-const Schema = require('../../lib/schema');
-const swagger = Schema.generate();
+const swagger = Schema.generate([401]);
 
 module.exports = {
     description: 'Returns all users',
     tags: ['api', 'admin'],
-    validate: { headers: Joi.object({ 'authorization': Joi.string().required() }).unknown() },
+    validate: { headers: RequestSchema.tokenRequired },
 
     handler: async function (request, reply) {
 

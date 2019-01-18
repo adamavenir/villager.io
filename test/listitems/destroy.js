@@ -3,7 +3,8 @@
 const Fixtures = require('../fixtures');
 const JWT = require('jsonwebtoken');
 const Config = require('getconfig');
-// const uuid = require('uuid').v4;
+const Faker = require('faker');
+
 const Server = Fixtures.server;
 const db = Fixtures.db;
 const { after, before, describe, it } = exports.lab = require('lab').script();
@@ -12,164 +13,101 @@ const { expect } = require('code');
 describe('Destroy List Items:', () => {
 
     let server;
+    let token;
+    let query;
 
-    const list = Fixtures.list();
-    const nolist = Fixtures.list_id();
+    const adminUser = Fixtures.user_admin();
+    const user = Fixtures.user_id();
 
-    const admin = Fixtures.user_admin();
-    const nonAuth = Fixtures.user_id();
-
-    const event1 = Fixtures.event();
-    const event2 = Fixtures.event();
-
-    let item1 = null;
-    let item2 = null;
+    let item;
+    let list;
 
     before(async () => {
 
         server = await Server;
+        await db.users.insert(user);
+        await db.users.insert(adminUser);
+        item = await db.items.insert(Fixtures.place());
+        list = await db.lists.insert(Fixtures.list({ owner: user.username }));
 
-        await Promise.all([
-            db.users.insert(admin),
-            db.users.insert(nonAuth)
-        ]);
+        token = JWT.sign(
+            { id: user.id, username: user.username, timestamp: new Date() },
+            Config.auth.secret,
+            Config.auth.options
+        );
 
-        const items = await Promise.all([
-            db.items.insert(event1),
-            db.items.insert(event2)
-        ]);
-
-        item1 = items[0];
-        item2 = items[1];
-
-        const token = JWT.sign({ id: admin.id, timestamp: new Date() }, Config.auth.secret, Config.auth.options);
-
-        const listQuery = {
-            method: 'POST',
-            url:    `/lists`,
-            headers: { 'authorization': token },
-            payload: list
+        query = {
+            method: 'DELETE',
+            url:    `/lists/listitems`,
+            headers: { 'Authorization': token }
         };
-
-        await server.inject(listQuery)
-            .then((response) => {
-
-                list.id = response.result.data.id;
-            });
-
-        const listItemQuery = {
-            method: 'POST',
-            url: '/lists/listitems',
-            headers: { 'authorization': token },
-            payload: {
-                item_id: item1.id,
-                list_id: list.id
-            }
-        };
-
-        await server.inject(listItemQuery);
     });
 
     after(async () => {
 
         await Promise.all([
-            db.users.destroy({ id: nonAuth.id }),
-            db.users.destroy({ id: admin.id }),
-            db.lists.destroy({ id: list.id }),
-            db.items.destroy({ id: item1.id }),
-            db.items.destroy({ id: item2.id })
+            db.users.destroy(),
+            db.lists.destroy(),
+            db.items.destroy()
         ]);
     });
 
-    it('Delete List Item - 200', () => {
+    it('Delete List Item - 200', async () => {
 
-        const token = JWT.sign({ id: admin.id, timestamp: new Date() }, Config.auth.secret, Config.auth.options);
+        await db.list_items.insert({ list_id: list.id, item_id: item.id });
         const payload = {
             list_id: list.id,
-            item_id: item1.id
+            item_id: item.id
         };
-        const query = {
-            method: 'DELETE',
-            url: '/lists/listitems',
-            headers: { 'authorization': token },
-            payload
+        query.payload = payload;
+        const response = await server.inject(query);
+        expect(response.statusCode).to.equal(200);
+    });
+
+    it('Delete List Item - Item 404', async () => {
+
+        const payload = {
+            list_id: list.id,
+            item_id: Faker.random.uuid()
         };
-
-        return (
-            server.inject(query)
-                .then((response) => {
-
-                    expect(response.statusCode).to.equal(200);
-                })
+        query.payload = payload;
+        const response = await server.inject(query);
+        expect(response.statusCode).to.equal(404);
+        expect(response.result.message).to.equal(
+            'Item not found'
         );
     });
 
-    it('Delete List Item - Item 404', () => {
+    it('Delete List Item - List 404', async () => {
 
-        const token = JWT.sign({ id: admin.id, timestamp: new Date() }, Config.auth.secret, Config.auth.options);
         const payload = {
-            list_id: list.id,
-            item_id: (item2.id + 100)
+            list_id: Faker.random.uuid(),
+            item_id: item.id
         };
-        const query = {
-            method: 'DELETE',
-            url: '/lists/listitems',
-            headers: { 'authorization': token },
-            payload
-        };
-
-        return (
-            server.inject(query)
-                .then((response) => {
-
-                    expect(response.statusCode).to.equal(404);
-                })
+        query.payload = payload;
+        const response = await server.inject(query);
+        expect(response.statusCode).to.equal(404);
+        expect(response.result.message).to.equal(
+            'List not found'
         );
     });
 
-    it('Delete List Item - List 404', () => {
+    it('Delete List Item - User 401', async () => {
 
-        const token = JWT.sign({ id: admin.id, timestamp: new Date() }, Config.auth.secret, Config.auth.options);
-        const payload = {
-            list_id: nolist.id,
-            item_id: item1.id
-        };
-        const query = {
-            method: 'DELETE',
-            url: '/lists/listitems',
-            headers: { 'authorization': token },
-            payload
-        };
-
-        return (
-            server.inject(query)
-                .then((response) => {
-
-                    expect(response.statusCode).to.equal(404);
-                })
-        );
-    });
-
-    it('Delete List Item - User 401', () => {
-
-        const token = JWT.sign({ id: nonAuth.id, timestamp: new Date() }, Config.auth.secret, Config.auth.options);
         const payload = {
             list_id: list.id,
-            item_id: item2.id
+            item_id: item.id
         };
-        const query = {
-            method: 'DELETE',
-            url: '/lists/listitems',
-            headers: { 'authorization': token },
-            payload
-        };
-
-        return (
-            server.inject(query)
-                .then((response) => {
-
-                    expect(response.statusCode).to.equal(401);
-                })
+        const adminToken = JWT.sign(
+            { id: adminUser.id, username: adminUser.username, timestamp: new Date() },
+            Config.auth.secret,
+            Config.auth.options
         );
+        const adminQuery = Object.assign({}, query, {
+            headers: { 'authorization': adminToken },
+            payload
+        });
+        const response = await server.inject(adminQuery);
+        expect(response.statusCode).to.equal(401);
     });
 });
